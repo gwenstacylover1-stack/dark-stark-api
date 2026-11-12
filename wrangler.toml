@@ -1,0 +1,10 @@
+name = "darksmmapisetup"
+main = "worker.js"
+compatibility_date = "2026-11-12"
+
+[[kv_namespaces]]
+binding = "DARK_STARK_DB"
+id = "6d6d4039ac174dba82a013e07fc22fd1"
+
+[triggers]
+crons = ["*/30 * * * *"]
