@@ -342,22 +342,33 @@ export default {
         });
       }
 
-      if (path.startsWith("/api/admin")) {
-        const body =
-          request.method === "POST"
-            ? await request.json().catch(() => ({}))
-            : {};
-        const providedKey = String(
-          request.headers.get("x-admin-passkey") || body.passkey || ""
-        ).trim();
-        const expectedKey = String(env.ADMIN_PASSKEY || "").trim();
+        if (path.startsWith("/api/admin")) {
+    const body =
+      request.method === "POST"
+        ? await request.json().catch(() => ({}))
+        : {};
+    const providedKey = String(
+      request.headers.get("x-admin-passkey") || body.passkey || ""
+    ).trim();
+    const rawEnvKey = Object.entries(env).find(
+      ([k]) => k.trim() === "ADMIN_PASSKEY" || k.trim() === "ADMN_PASSKEY"
+    )?.[1];
+    const expectedKey = String(rawEnvKey || "").trim();
 
-        if (!expectedKey || providedKey !== expectedKey) {
-          return jsonResponse(
-            { success: false, error: "Unauthorized: Invalid Admin Passkey." },
-            401
-          );
-        }
+    if (!expectedKey) {
+      return jsonResponse(
+        { success: false, error: "Server Error: ADMIN_PASSKEY is empty in Cloudflare." },
+        401
+      );
+    }
+
+    if (providedKey !== expectedKey) {
+      return jsonResponse(
+        { success: false, error: `Passkey mismatch (sent ${providedKey.length} chars, server has ${expectedKey.length} chars).` },
+        401
+      );
+    }
+          
 
         if (path === "/api/admin/sync" && request.method === "POST") {
           const services = await fetchAndSyncServices(env);
