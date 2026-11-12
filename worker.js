@@ -32,30 +32,61 @@ function safeJsonParse(text) {
 
 async function callUpstream(apiKey, params) {
   const payload = { key: apiKey, ...params };
-
-  let res = await fetch(UPSTREAM_URL, {
-    method: "POST",
-    headers: {
-      ...BROWSER_HEADERS,
-      "Content-Type": "application/x-www-form-urlencoded",
+  const attempts = [
+    () =>
+      fetch(UPSTREAM_URL, {
+        method: "POST",
+        headers: {
+          ...BROWSER_HEADERS,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams(payload).toString(),
+      }),
+    () =>
+      fetch(UPSTREAM_URL, {
+        method: "POST",
+        headers: {
+          ...BROWSER_HEADERS,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      }),
+    () => {
+      const fd = new FormData();
+      for (const [k, v] of Object.entries(payload)) {
+        fd.append(k, String(v));
+      }
+      return fetch(UPSTREAM_URL, {
+        method: "POST",
+        headers: BROWSER_HEADERS,
+        body: fd,
+      });
     },
-    body: new URLSearchParams(payload),
-  });
+    () => {
+      const query = new URLSearchParams(payload).toString();
+      return fetch(`${UPSTREAM_URL}?${query}`, {
+        method: "GET",
+        headers: BROWSER_HEADERS,
+      });
+    },
+  ];
 
-  let rawText = await res.text();
-  let parsed = safeJsonParse(rawText);
+  let lastResult = { res: null, rawText: "", parsed: null };
+  for (const runAttempt of attempts) {
+    const res = await runAttempt();
+    const rawText = await res.text();
+    const parsed = safeJsonParse(rawText);
+    lastResult = { res, rawText, parsed };
 
-  if (!parsed || (typeof parsed === "object" && !Array.isArray(parsed) && parsed.error)) {
-    const query = new URLSearchParams(payload).toString();
-    res = await fetch(`${UPSTREAM_URL}?${query}`, {
-      method: "GET",
-      headers: BROWSER_HEADERS,
-    });
-    rawText = await res.text();
-    parsed = safeJsonParse(rawText);
+    const hasError =
+      !parsed ||
+      (typeof parsed === "object" && !Array.isArray(parsed) && parsed.error);
+    if (!hasError) {
+      return lastResult;
+    }
   }
 
-  return { res, rawText, parsed };
+  return lastResult;
 }
 
 async function fetchAndSyncServices(env) {
@@ -73,7 +104,9 @@ async function fetchAndSyncServices(env) {
       parsed && parsed.error
         ? parsed.error
         : `HTTP ${res.status}: ${rawText.slice(0, 140)}`;
-    throw new Error(`Upstream rejected request (${detail})`);
+    throw new Error(
+      `Upstream rejected request (${detail} | key length: ${apiKey.length})`
+    );
   }
 
   const markedUp = parsed.map((item) => ({
@@ -403,4 +436,3 @@ export default {
     );
   },
 };
-            
